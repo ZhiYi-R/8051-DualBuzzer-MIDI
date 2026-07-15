@@ -6,6 +6,9 @@
 \usepackage{lastpage}
 \usepackage{tikz}
 \usepackage{float}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage[obeyspaces]{xurl}
 \usepackage{caption}
 \usetikzlibrary{positioning,arrows.meta,shapes.geometric}
 \geometry{a4paper, margin=2.5cm, headheight=15pt}
@@ -16,6 +19,11 @@
     UprightFont=*-Regular,
     BoldFont=*-Medium,
     AutoFakeBold=true,
+]
+\setCJKmonofont{LXGWWenKai}[
+    Path=fonts/LxgwWenKai/fonts/TTF/,
+    Extension=.ttf,
+    UprightFont=*-Regular,
 ]
 \renewcommand{\figurename}{图}
 \renewcommand{\tablename}{表}
@@ -257,14 +265,14 @@ PollPauseButton 用 lastP34State 保存上一次电平，发现从 1 变 0 后�
     \centering
     \caption{数码管段码表}
     \begin{tabular}{cccc}
-    \hline
+    \toprule
     歌号 & 显示数字 & 单曲循环段码 & 列表循环段码 \\
-    \hline
+    \midrule
     0 & 1 & 0xF9 & 0x79 \\
     1 & 2 & 0xA4 & 0x24 \\
     2 & 3 & 0xB0 & 0x30 \\
     3 & 4 & 0x99 & 0x19 \\
-    \hline
+    \bottomrule
     \end{tabular}
 \end{table}
 
@@ -278,5 +286,71 @@ LED 频谱灯由 UpdateSpectrum 函数控制。它按主声道当前频率点亮
 ApplyFrequency 每次更新主声道频率都会调 UpdateSpectrum，所以音符一变，LED 柱状条就跟着变化。P1 口的 8 个 LED 既是音高指示，也能直观反映播放状态，和数码管显示配合起来。
 
 \section*{四、测试与结果}
+
+\subsection*{1、单元测试}
+
+\subsubsection*{ucSim51 仿真器}
+
+单元测试使用 uCsim 的 s51 仿真器对编译好的 8051 固件进行验证。s51 是开源的 MCS-51 指令级仿真器，能加载 Intel HEX 文件，运行并观察内部寄存器、存储器与端口状态。测试中通过 `-z` 选项启动 TCP 命令控制台，Python 脚本以 socket 方式发送命令、读写 SFR/IRAM、设置事件断点并触发外部中断，从而在脱离真实硬件的情况下完成自动化回归测试。
+
+\subsubsection*{单元测试设计}
+
+单元测试围绕初始化、显示、LED 频谱、定时器重载、播放状态、外部中断和按键控制展开。测试时用事件断点把仿真停在固件写入关键 SFR 或 IRAM 的那条指令之前，再走一步让写入完成，然后读取端口或内存值进行断言。例如停在 P0 写入验证数码管段码，停在 P1 写入验证 LED 频谱，停在 TL0/RCAP2L 写入验证双音轨定时器重载，停在 PlayerState 写入验证播放状态。INT0、INT1 由脚本直接设置 TCON 标志位并拉低 P3.2/P3.3 模拟；P3.4 按键则预置 lastP34State 并拉低 P3.4，触发 PollPauseButton 的暂停/恢复分支。当前共 11 个用例，覆盖 MusicInit、显示、双音轨首音、切歌、模式切换、Timer1 推进音符以及暂停/恢复。
+
+具体测试点、前序状态与预期值见表 \ref{tab:tests}。
+
+\begin{table}[H]
+    \centering
+    \caption{单元测试点、前序状态与预期值}
+    \label{tab:tests}
+    \small
+    \begin{tabular}{>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{4.2cm}>{\raggedright\arraybackslash}p{5.2cm}}
+    \toprule
+    测试点 & 前序状态 & 预期值 \\
+    \midrule
+    MusicInit 配置 & 固件刚复位 & TMOD=0x11，IE=0xAF，IT0/IT1=1 \\
+    开机显示 & 固件刚复位 & P0=0xF9（显示“1”） \\
+    LED 频谱 & 运行到首主音符写入 P1 & 主音 277 Hz 对应 P1=0x07 \\
+    Timer0 重载 & 运行到 ApplyFrequency 写 TL0 & TH0/TL0 与缓存一致，频率误差 $\leq$1\% \\
+    Timer2 重载 & 运行到 ApplyFrequency2 写 RCAP2L & RCAP2H/L 与缓存一致，频率误差 $\leq$1\% \\
+    播放状态 & 运行到 PlayerState 写入 & PlayerState=Playing，HasSecondTrack=1 \\
+    INT0 切歌 & 播放中触发 INT0 并运行到 P0 写入 & CurrentSongIndex=1，P0=0xA4 \\
+    INT1 切换模式 & 播放中触发 INT1 并运行到 P0 写入 & PlaylistMode=1，P0 点亮小数点 \\
+    Timer1 推进音符 & 播放中运行到 NoteIndex 写入 & NoteIndex 从 0 递增到 1 \\
+    P3.4 暂停 & 播放中预置 lastP34State=1 并拉低 P3.4 & PlayerState=Paused，TR0=TR1=0 \\
+    P3.4 恢复 & 暂停状态下再次按下 P3.4 & PlayerState=Playing，TR0=TR1=1 \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsubsection*{单元测试结果}
+
+在本地环境中运行 \path{uv run python Software/tests/run_tests.py}，全部 11 个单元测试用例均通过，0 失败。所有测试均基于 s51 仿真器，固件为 \path{Software/build/firmware.ihx}，未出现断言失败或仿真器错误。测试结果汇总见表 \ref{tab:results}。
+
+\begin{table}[H]
+    \centering
+    \caption{单元测试结果汇总}
+    \label{tab:results}
+    \small
+    \begin{tabular}{>{\raggedright\arraybackslash}p{4.2cm}c}
+    \toprule
+    测试点 & 是否通过 \\
+    \midrule
+    MusicInit 配置 & 通过 \\
+    开机显示 & 通过 \\
+    LED 频谱 & 通过 \\
+    Timer0 重载 & 通过 \\
+    Timer2 重载 & 通过 \\
+    播放状态 & 通过 \\
+    INT0 切歌 & 通过 \\
+    INT1 切换模式 & 通过 \\
+    Timer1 推进音符 & 通过 \\
+    P3.4 暂停 & 通过 \\
+    P3.4 恢复 & 通过 \\
+    \midrule
+    \multicolumn{2}{l}{\textbf{总计：}用例总数 11，通过数 11，失败数 0} \\
+    \bottomrule
+    \end{tabular}
+\end{table}
 
 \end{document}
