@@ -1,0 +1,282 @@
+\documentclass{article}
+\usepackage{xeCJK}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{tikz}
+\usepackage{float}
+\usepackage{caption}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric}
+\geometry{a4paper, margin=2.5cm, headheight=15pt}
+
+\setCJKmainfont{LXGWWenKai}[
+    Path=fonts/LxgwWenKai/fonts/TTF/,
+    Extension=.ttf,
+    UprightFont=*-Regular,
+    BoldFont=*-Medium,
+    AutoFakeBold=true,
+]
+\renewcommand{\figurename}{图}
+\renewcommand{\tablename}{表}
+
+\input{info}
+
+\newcommand{\projecttitle}{基于单片机的音乐盒设计}
+\newcommand{\coursetitle}{《单片机原理及应用》课程设计}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\coursetitle}
+\fancyhead[R]{\studentname\ \studentid}
+\fancyfoot[C]{第 \thepage\ 页 共 \pageref{LastPage}\ 页}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\begin{document}
+\begin{titlepage}
+    \thispagestyle{empty}
+    \centering
+    \vspace*{1cm}
+    \includegraphics[width=0.35\textwidth]{assets/icon.png}\par
+    \vspace{2cm}
+    {\Huge \bfseries \coursetitle}\par
+    \vspace{3cm}
+    {\LARGE \bfseries 题\quad 目：\projecttitle}\par
+    \vfill
+    \begin{tabular}{rl}
+        \Large 姓\quad\quad 名： & \Large \studentname \\[0.6em]
+        \Large 学\quad\quad 号： & \Large \studentid \\[0.6em]
+        \Large 班\quad\quad 级： & \Large \studentclass \\[0.6em]
+        \Large 院\quad\quad 系： & \Large \department \\[0.6em]
+        \Large 专业、年级： & \Large \studentmajor、\studentyear \\[0.6em]
+        \Large 指导教师： & \Large \advisor \\
+    \end{tabular}
+    \vfill
+    {\Large 二〇二六年九月}\par
+\end{titlepage}
+
+\setcounter{page}{1}
+\section*{摘要}
+
+音乐播放与音效实现是电子系统人机交互的重要载体，在消费电子、智能家居及教育展示等领域具有广泛的应用需求。本设计以AT89C51RC2单片机为核心控制单元，构建了一套基于双蜂鸣器的歌曲播放系统，具体包括双蜂鸣器驱动电路、共阳极数码管显示电路、LED频谱指示电路以及按键交互控制电路。系统利用定时器产生对应音符频率的方波信号，经Buffer驱动主、副两个蜂鸣器，实现Numb、Payphone、NewDivide、WhatIveDone四首MIDI曲目的双音轨同步播放；通过P0口数码管显示当前歌曲编号，P1口LED根据频率变化形成频谱指示，用户可通过P3.2切歌键、P3.3模式切换键及P3.4暂停/继续键完成歌曲切换、单曲循环/列表循环切换与播放控制，外部中断配合软件消抖保证了操作的稳定性与实时性。Python分析脚本从MIDI资源中提取主旋律与低音轨，生成播放数据，提升了曲目准备的效率与准确性。实验结果表明，系统能够稳定、连续地播放多轨音乐，输出音色清晰，交互响应及时，整体运行可靠。
+
+\noindent\textbf{关键词：}AT89C51RC2；双蜂鸣器；数码管显示；MIDI；LED频谱
+
+\section*{一、系统总体方案及设计任务}
+
+\subsection*{1、系统设计}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        >=Stealth,
+        mcu/.style={draw, rectangle, fill=gray!10, minimum width=3.6cm, minimum height=1.6cm, align=center, font=\small},
+        box/.style={draw, rectangle, rounded corners=2pt, minimum width=2.6cm, minimum height=1cm, align=center, font=\small},
+        every node/.style={font=\small}
+    ]
+    \node[mcu] (mcu) {AT89C51RC2\\主控单元};
+    \node[box, left=2.6cm of mcu, yshift=1.0cm] (clock) {12 MHz 晶振};
+    \node[box, left=2.6cm of mcu, yshift=-1.0cm] (reset) {电源/复位};
+    \node[box, right=2.6cm of mcu, yshift=1.6cm] (seg) {共阳极数码管\\P0};
+    \node[box, right=2.6cm of mcu, yshift=0.3cm] (led) {LED 频谱\\P1};
+    \node[box, right=2.6cm of mcu, yshift=-1.6cm] (buzz) {双蜂鸣器\\Buffer\\P3.0/P3.1};
+    \node[box, below=2.0cm of mcu] (key) {按键输入\\P3.2/P3.3/P3.4};
+    \node[box, above=2.0cm of mcu] (pc) {MIDI 分析/PC};
+    \draw[->, thick] (clock) -- (mcu);
+    \draw[->, thick] (reset) -- (mcu);
+    \draw[->, thick] (mcu) -- (seg);
+    \draw[->, thick] (mcu) -- (led);
+    \draw[->, thick] (mcu) -- (buzz);
+    \draw[->, thick] (key) -- (mcu);
+    \draw[->, thick, dashed] (pc) -- (mcu) node[midway, right] {曲目数据};
+    \end{tikzpicture}
+    \caption{系统总体结构框图}
+    \label{fig:system}
+\end{figure}
+
+系统总体结构如图\ref{fig:system}所示：AT89C51RC2 作为核心，左边接 12 MHz 晶振和电源/复位，右边接共阳极数码管、8 位 LED 和双蜂鸣器，下方是三个按键，上方通过虚线接收 PC 端转换好的曲目数据。单片机内部的 16 位定时器根据音符频率算出重载值，从 P3.0、P3.1 输出方波，经 Buffer 驱动主、副两个蜂鸣器；定时器 1 提供 10 ms 节拍，用来推进双音轨播放。P0 口接共阳极数码管显示当前歌号，P1 口接 8 位 LED，随音高点亮不同位。P3.2、P3.3、P3.4 三个按键分别用于切歌、切换单曲/列表循环、暂停/继续，低电平有效，外部中断配合软件延时消抖。Python 脚本先把 MIDI 文件转成主旋律和低音轨两组数据，主控直接调用即可。各模块分工明确，能一起完成多曲目双音轨播放、显示和交互。
+\newpage
+\subsection*{2、设计任务}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        >=Stealth,
+        mcu/.style={draw, rectangle, fill=gray!10, minimum width=3.6cm, minimum height=1.6cm, align=center, font=\small},
+        box/.style={draw, rectangle, rounded corners=2pt, minimum width=2.6cm, minimum height=1cm, align=center, font=\small}
+    ]
+    \node[mcu] (mcu) {80C51\\单片机};
+    \node[box, left=2.8cm of mcu, yshift=1.0cm] (power) {电源、时钟/复位};
+    \node[box, left=2.8cm of mcu, yshift=-1.0cm] (key) {按键、开关输入};
+    \node[box, right=2.8cm of mcu, yshift=1.6cm] (led) {LED 灯};
+    \node[box, right=2.8cm of mcu, yshift=0cm] (seg) {数码管};
+    \node[box, right=2.8cm of mcu, yshift=-1.6cm] (buzz) {蜂鸣器};
+    \draw[->, thick] (power) -- (mcu);
+    \draw[->, thick] (key) -- (mcu);
+    \draw[->, thick] (mcu) -- (led);
+    \draw[->, thick] (mcu) -- (seg);
+    \draw[->, thick] (mcu) -- (buzz);
+    \end{tikzpicture}
+    \caption{系统电路架构图}
+    \label{fig:circuit}
+\end{figure}
+
+\begin{enumerate}
+    \item 基于给定单片机晶体振荡器频率和音乐简谱，借助AI 技术生成对应的定时器初值表。（10 分）
+    \item 利用I/O 口产生一定的频率波形，驱动蜂鸣器发出不同的音调，能够完成播放一首乐曲。（50 分）
+    \item 存储至少四首不同乐曲，可以实现乐曲顺序播放或单曲循环。（10 分）
+    \item 能够通过按键实现下一首乐曲切换，数码管能够显示当前播放乐曲的序号。（10 分）
+    \item 具有按键暂停/继续播放功能。（5 分）
+    \item 设计LED 花样流水灯，随播放音符变换。（10 分）
+    \item 其它功能实现或性能指标提升。（5 分）
+\end{enumerate}
+
+\section*{二、硬件电路设计}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{assets/Hardware.bmp}
+    \caption{硬件电路图}
+    \label{fig:hardware}
+\end{figure}
+
+硬件电路如图\ref{fig:hardware}所示。核心选用 AT89C51RC2（80C51 内核），晶振 12 MHz，外接 Buffer 驱动的双蜂鸣器、共阳极数码管、8 位 LED 和三个按键。这款单片机有 3 个定时器、外部中断和足够的 I/O 口，能同时输出双音轨、驱动显示并读取按键。仿真在 Proteus 中完成，晶振、复位和电源按默认方式接入，图上没有专门画出来。
+
+音频输出用主、副两个无源蜂鸣器，P3.1 和 P3.0 分别输出方波驱动。无源蜂鸣器要频率可调的方波才能发声，改变定时器重载值就能得到不同音调。P3.0 和 P3.1 没有复用，直接作为定时器输出。8051 的 I/O 口驱动电流不大，所以用 Buffer 放大电流，让两个蜂鸣器同时响时都有足够推力，低音轨和主旋律不会互相拖累。
+
+显示用 P0 口接共阳极数码管，P1 口接 8 位 LED。P0 是开漏口，没有内部上拉，输出高电平时不稳定；但共阳极数码管的公共端接 VCC，段选端只需 P0 拉低就能点亮。P0 输出高时呈高阻态，段选端没有电流，LED 熄灭，所以不用额外上拉。数码管只显示当前歌号，接线简单；P1 的 LED 按音符频率点亮不同位，音高越高亮得越多，当成简单的频谱指示。
+
+三个按键接在 P3.2、P3.3 和 P3.4。P3.2、P3.3 作为外部中断 0/1 输入，用来切歌和切换单曲/列表循环，中断方式响应快；P3.4 由主循环轮询，负责暂停/继续。P3 口内部有上拉电阻，按键另一端接地，没按下时端口被拉高，按下后拉低，所以三个按键都是低电平有效，不需要外部上拉。软件里用延时消抖，避免一次按键被识别多次。
+
+整个硬件端口分配比较紧凑：P0 管数码管，P1 管 LED，P3 同时负责按键输入和蜂鸣器输出。这样安排减少了飞线，也便于在 Proteus 里直接仿真。
+
+\section*{三、软件程序设计}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        >=Stealth,
+        layer/.style={draw, rectangle, rounded corners=3pt, fill=gray!10, text width=3.0cm, minimum width=3.0cm, minimum height=1.0cm, align=center, font=\small},
+        mod/.style={draw, rectangle, rounded corners=2pt, text width=2.7cm, minimum width=3.0cm, minimum height=0.8cm, align=center, font=\small},
+        arrow/.style={->, thick, >=Stealth},
+        arrowboth/.style={<->, thick, >=Stealth}
+    ]
+    \node[layer] (main) {主程序 main.c};
+    \node[layer, right=2.5cm of main] (isr) {中断服务程序};
+    \node[layer, above=1.8cm of main] (music) {歌曲数据 music.c};
+    \node[layer, right=2.5cm of music] (py) {Python MIDI 分析脚本};
+    \node[layer, below=1.8cm of main, xshift=2.5cm] (periph) {外设接口层};
+    \node[mod, below=0.8cm of periph, xshift=-3.2cm] (buzz) {蜂鸣器 P3.0/P3.1};
+    \node[mod, below=0.8cm of periph] (seg) {共阳极数码管 P0};
+    \node[mod, below=0.8cm of periph, xshift=3.2cm] (led) {LED/按键 P1/P3};
+    \draw[arrow, dashed] (py) -- (music);
+    \draw[arrow] (music) -- (main);
+    \draw[arrowboth] (main) -- (isr);
+    \draw[arrow] (main) -- (periph);
+    \draw[arrow] (isr) -- (periph);
+    \draw[arrow] (periph) -- (buzz);
+    \draw[arrow] (periph) -- (seg);
+    \draw[arrow] (periph) -- (led);
+    \end{tikzpicture}
+    \caption{软件系统总体架构}
+    \label{fig:softarch}
+\end{figure}
+
+如图\ref{fig:softarch}所示，软件系统分为 Python 分析脚本、歌曲数据 music.c、主程序 main.c、中断服务程序和外设接口层。Python 脚本将 MIDI 资源转换为 music.c 中的双音轨音符数据；主程序完成初始化、播放控制与按键交互；定时器与外部中断服务程序协同完成双音轨音频输出与实时状态处理；外设接口层统一封装蜂鸣器、数码管、LED 与按键的底层操作。各部分将在后续小节中详细介绍。
+
+\newpage
+
+\subsection*{1、主程序设计}
+
+\begin{figure}[H]
+    \begin{minipage}[c]{0.45\textwidth}
+        \centering
+        \begin{tikzpicture}[
+            node distance=0.6cm,
+            startstop/.style={draw, rectangle, rounded corners=4pt, fill=gray!10, minimum width=2.4cm, minimum height=0.5cm, align=center, font=\small},
+            process/.style={draw, rectangle, minimum width=2.6cm, minimum height=0.5cm, align=center, font=\small},
+            decision/.style={draw, diamond, aspect=2.5, minimum width=2.2cm, minimum height=0.5cm, align=center, font=\small, inner sep=1pt},
+            arrow/.style={->, >=Stealth, thick}
+        ]
+        \node[startstop] (start) {开始};
+        \node[process, below=of start] (init) {MusicInit};
+        \node[process, below=of init] (mode) {设置默认模式\\播放第1首歌};
+        \node[process, below=of mode] (poll) {PollPauseButton};
+        \node[decision, below=of poll] (paused) {暂停？};
+        \node[decision, below=of paused] (ended) {歌曲结束？};
+        \node[process, below=of ended] (next) {按模式切歌\\更新显示};
+        \node[process, below=of next] (replay) {播放当前歌曲};
+        \path (poll.east) ++(0.6,0) coordinate (return);
+        \draw[arrow] (start) -- (init);
+        \draw[arrow] (init) -- (mode);
+        \draw[arrow] (mode) -- (poll);
+        \draw[arrow] (poll) -- (paused);
+        \draw[arrow] (paused) -- node[right, font=\small] {否} (ended);
+        \draw[arrow] (ended) -- node[right, font=\small] {是} (next);
+        \draw[arrow] (next) -- (replay);
+        \draw[arrow] (paused.east) -- node[above, font=\small] {是} (return |- paused.east);
+        \draw[arrow] (return |- paused.east) -- (return);
+        \draw[arrow] (ended.east) -- node[above, font=\small] {否} (return |- ended.east);
+        \draw[arrow] (return |- ended.east) -- (return);
+        \draw[arrow] (replay.east) -- (return |- replay.east);
+        \draw[arrow] (return |- replay.east) -- node[right, font=\small, pos=0.3, xshift=0.15cm] {循环} (return);
+        \draw[arrow] (return) -- (poll.east);
+        \end{tikzpicture}
+        \captionof{figure}{主程序流程图}
+        \label{fig:main}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[c]{0.5\textwidth}
+        main.c 直接操作 AT89C51RC2 的寄存器，负责初始化、状态管理、按键扫描和显示刷新。上电后，main() 先调用 MusicInit()：把 Timer0/Timer1 配成 16 位定时器，Timer2 设为自动重载，再打开 ET0、ET1、ET2 和总中断 EA。P0 接共阳极数码管，P1 接 LED 频谱，P3.0/P3.1 输出双蜂鸣器方波，P3.2/P3.3/P3.4 作为按键输入，靠内部上拉保持高电平。初始化后默认单曲循环（PlaylistMode=0），CurrentSongIndex=0，显示曲目号后再启动第一首歌的双音轨播放。
+
+        while(1) 主循环里主要运行 PollPauseButton()，轮询 P3.4 暂停/继续键。检测到下降沿后延时约 20 ms 消抖，如果当前在播放，MusicPause() 会停掉 Timer0/Timer1 并把蜂鸣器静音；如果已暂停，MusicResume() 则恢复输出。Timer0 和 Timer2 中断按各自音符频率翻转 P3.1、P3.0，输出两个声部。Timer1 每 10 ms 来一次，给两个轨道的 DurationCounter 减数，哪个轨道减到 0，就用 LoadNote 或 ApplyFrequency2 加载下一音符。整首歌播完后 MusicStatus 返回 MusicStopped，主循环按 PlaylistMode 切下一首或重新播放，并刷新数码管和 LED 频谱。外部中断 0（P3.2）负责切歌，外部中断 1（P3.3）负责切换单曲/列表模式，两个中断服务内部都带 20 ms 消抖，然后更新状态。
+    \end{minipage}
+\end{figure}
+
+
+\subsection*{2、蜂鸣器驱动子程序}
+
+蜂鸣器驱动主要由:\\ MusicPlay、MusicPlayDual、ApplyFrequency、ApplyFrequency2、Timer0ISR、Timer2ISR、MusicStop、MusicPause、MusicResume 和 UpdateSpectrum 这些函数完成。MusicPlay 给单音轨用，MusicPlayDual 是实际调用的双音轨版本；它们都会记下音符数组指针和长度，设置 NoteIndex 和 DurationCounter，然后调用 ApplyFrequency 或 ApplyFrequency2 把第一个音符频率写进定时器。ApplyFrequency 控制主蜂鸣器 P3.1，靠 Timer0 输出方波；ApplyFrequency2 控制副蜂鸣器 P3.0，靠 Timer2 输出方波。频率为 0 时，两个函数都会停掉对应定时器并把输出拉低，作为静音或休止。
+
+Timer0 和 Timer2 的中断里会翻转 P3.1、P3.0，并重新装入重载值，让输出保持目标频率。重载值从 FOSC=12 MHz 和音符频率算出：65536 减去 FOSC/(24×频率)，每计数一次翻一次，得到的方波频率就是音符频率。Timer1 每 10 ms 来一次，给两个轨道的 DurationCounter 减数；哪个轨道计时到 0，就用 LoadNote 或 ApplyFrequency2 加载下一音符。MusicStop 会停掉所有定时器并把 P3.0、P3.1 拉低；MusicPause 只停 Timer0/Timer1，让蜂鸣器静音；MusicResume 再恢复这两个定时器。ApplyFrequency 更新频率时还会调 UpdateSpectrum，把当前主频率转换成 P1 口 LED 的点亮位数，音越高亮的位越多。
+
+\subsection*{3、按键输入子程序}
+
+按键输入靠 P3.2、P3.3、P3.4 三个键完成。P3 口内部有上拉电阻，没按时为高，按下后接地变低。P3.2、P3.3 接外部中断 0/1，初始化时把 IT0、IT1 设成边沿触发，打开 EX0、EX1 就能响应；P3.4 没走中断，而是在 while(1) 里由 PollPauseButton() 轮询，用来暂停和继续播放。
+
+PollPauseButton 用 lastP34State 保存上一次电平，发现从 1 变 0 后先延时约 20 ms，再读一次确认仍低，才切换状态：播放时调 MusicPause，暂停时调 MusicResume，然后等按键松开。P3.2 触发 Int0ISR，进入后先关 EX0 并延时消抖，确认有效后 CurrentSongIndex 加 1，超出范围再绕回 0，接着播放下一首并显示歌号；P3.3 触发 Int1ISR，同样先关 EX1、延时消抖，再把 PlaylistMode 取反并更新显示，单曲/列表循环用小数点区分。三个键都靠软件延时消抖，防止误触。
+
+\newpage
+
+\subsection*{4、数码管驱动子程序}
+
+数码管驱动由 DisplaySongNumber 函数完成。它根据 CurrentSongIndex 把 0~3 转成共阳极七段码并写进 P0：歌号 0 输出 0xF9，1 输出 0xA4，2 输出 0xB0，3 输出 0x99，这些码低电平点亮对应段。列表循环时程序把段码 bit7 清零，小数点跟着亮；单曲循环时 bit7 不变，小数点保持熄灭。主函数初始化后调用它显示初始曲目，Int0ISR 切歌和 Int1ISR 切换模式后也会再调一次刷新显示。
+
+\begin{table}[H]
+    \centering
+    \caption{数码管段码表}
+    \begin{tabular}{cccc}
+    \hline
+    歌号 & 显示数字 & 单曲循环段码 & 列表循环段码 \\
+    \hline
+    0 & 1 & 0xF9 & 0x79 \\
+    1 & 2 & 0xA4 & 0x24 \\
+    2 & 3 & 0xB0 & 0x30 \\
+    3 & 4 & 0x99 & 0x19 \\
+    \hline
+    \end{tabular}
+\end{table}
+
+P0 口是 8051 的开漏口，没有内部上拉，输出高电平时为高阻态；但共阳极数码管公共端接 VCC，段选端只要 P0 拉低就能导通。P0 输出高时呈高阻态，段选端没有电流，数码管熄灭，所以不需要额外上拉。P0 只接数码管，8 个引脚正好够用，和蜂鸣器、按键、LED 的端口互不重叠，端口分配看起来也比较清楚。
+
+
+\subsection*{5、LED频谱灯子程序}
+
+LED 频谱灯由 UpdateSpectrum 函数控制。它按主声道当前频率点亮 P1 口的 8 个 LED，音高越高，亮起的个数就越多。具体分法如下：频率为 0 时全部熄灭；低于 180 Hz 只亮 1 个，180~240 Hz 亮 2 个，240~300 Hz 亮 3 个，300~360 Hz 亮 4 个，360~440 Hz 亮 5 个，440~550 Hz 亮 6 个，550~700 Hz 亮 7 个，超过 700 Hz 则 8 个全亮。P1 口输出高电平点亮 LED，所以写入 0xFF 时全亮，0x00 时全灭。
+
+ApplyFrequency 每次更新主声道频率都会调 UpdateSpectrum，所以音符一变，LED 柱状条就跟着变化。P1 口的 8 个 LED 既是音高指示，也能直观反映播放状态，和数码管显示配合起来。
+
+\section*{四、测试与结果}
+
+\end{document}

@@ -1,0 +1,3 @@
+# utils/Analyzer.py 依赖
+# 提供 rtmidi.midiconstants，用于解析 MIDI 文件中的事件常量
+python-rtmidi==1.5.8
