@@ -3,7 +3,7 @@ MIDI 文件字面分析报告
 
 ================================================================================
 文件：NewDivide.mid
-完整路径：D:/Projects/CourseDesigns/MCU/Resources/NewDivide.mid
+完整路径：Resources/NewDivide.mid
 SMF 格式：0（0=单音轨，1=多音轨，2=独立音轨）
 音轨数量：1
 分度值（Ticks/四分音符）：192
@@ -243,7 +243,7 @@ SMF 格式：0（0=单音轨，1=多音轨，2=独立音轨）
     tick     3744 ~ 3776     |    84.7 ms |  C3 ( 48)   130.81 Hz | vel  92 | ch 6
 ================================================================================
 文件：Numb.mid
-完整路径：D:/Projects/CourseDesigns/MCU/Resources/Numb.mid
+完整路径：Resources/Numb.mid
 SMF 格式：1（0=单音轨，1=多音轨，2=独立音轨）
 音轨数量：11
 分度值（Ticks/四分音符）：960
@@ -577,7 +577,7 @@ SMF 格式：1（0=单音轨，1=多音轨，2=独立音轨）
     tick    85920 ~ 86880    |   545.5 ms | C#5 ( 73)   554.37 Hz | vel 127 | ch 8
 ================================================================================
 文件：Payphone.mid
-完整路径：D:/Projects/CourseDesigns/MCU/Resources/Payphone.mid
+完整路径：Resources/Payphone.mid
 SMF 格式：1（0=单音轨，1=多音轨，2=独立音轨）
 音轨数量：17
 分度值（Ticks/四分音符）：480
@@ -1165,7 +1165,7 @@ SMF 格式：1（0=单音轨，1=多音轨，2=独立音轨）
   音符数量：0
 ================================================================================
 文件：WhatIveDone.mid
-完整路径：D:/Projects/CourseDesigns/MCU/Resources/WhatIveDone.mid
+完整路径：Resources/WhatIveDone.mid
 SMF 格式：1（0=单音轨，1=多音轨，2=独立音轨）
 音轨数量：12
 分度值（Ticks/四分音符）：120
