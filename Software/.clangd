@@ -1,0 +1,41 @@
+---
+CompileFlags:
+  # Force clangd to use its Clang driver (ignore sdcc binary name)
+  Compiler: clang
+
+  # These SDCC flags may appear in compile_commands.json if using
+  # SCons' CompilationDatabase tool; strip them so clangd understands.
+  Remove:
+    - -mmcs51
+    - --model-*
+    - --stack-*
+    - --xstack*
+    - --iram-*
+    - --xram-*
+    - --code-*
+    - --std
+    - --codeseg*
+    - --no-opt*
+    - --acall-*
+    - --callee-saves*
+    - --fomit-*
+    - --nostdinc
+    - --nostdlib
+    - --less-pedantic
+    - --disable-warning*
+
+  # Auto-inject clangd compatibility header for SDCC keywords
+  Add:
+    - -include
+    - sdcc_clangd_compat.h
+
+Diagnostics:
+  Suppress:
+    - unknown-pragmas
+    - unknown-attributes
+    - unknown-warning-option
+    - '#warnings'
+
+Index:
+  Background: Build
+  StandardLibrary: No

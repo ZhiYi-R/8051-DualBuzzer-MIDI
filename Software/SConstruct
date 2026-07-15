@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""
+SConstruct -- SDCC (MCS-51) build scaffolding for AT89C51RC2
+
+Usage:
+  scons                          # sdcc must be on PATH
+  scons SDCC_HOME=D:/Tools/SDCC  # explicit install root
+  scons -c                       # clean
+
+SDCC discovery (priority):
+  1. SDCC_HOME env var
+  2. PATH + sdcc --print-search-dirs
+
+Output:  build/firmware.hex  (Intel HEX)
+"""
+
+import json
+import os
+import subprocess
+import sys
+
+# ====================================================================
+# Step 1  --  discover SDCC installation
+# ====================================================================
+
+SDCC_HOME   = os.environ.get('SDCC_HOME', '').strip()
+SDCC_BIN_DIR= ''
+CC          = 'sdcc.exe'
+LINK        = CC
+PACKIHX     = 'packihx.exe'
+SDCC_INC_TOP= ''
+SDCC_INC_MCS51=''
+
+if SDCC_HOME:
+    _bin = os.path.join(SDCC_HOME, 'bin')
+    CC      = os.path.join(_bin, 'sdcc.exe')
+    LINK    = CC
+    PACKIHX = os.path.join(_bin, 'packihx.exe')
+    SDCC_BIN_DIR  = _bin
+    SDCC_INC_TOP   = os.path.join(SDCC_HOME, 'include')
+    SDCC_INC_MCS51 = os.path.join(SDCC_INC_TOP, 'mcs51')
+else:
+    try:
+        _r = subprocess.run(
+            ['sdcc.exe', '--print-search-dirs'],
+            capture_output=True, text=True, timeout=15,
+        )
+        if _r.returncode == 0:
+            _cur_key = ''
+            for _line in _r.stdout.strip().splitlines():
+                _line = _line.strip()
+                if not _line:
+                    continue
+                if _line.endswith(':'):
+                    _cur_key = _line[:-1].strip()
+                    continue
+                if _cur_key == 'programs' and not SDCC_BIN_DIR:
+                    SDCC_BIN_DIR = os.path.normpath(_line)
+                    _home = os.path.normpath(os.path.join(SDCC_BIN_DIR, '..'))
+                    _t = os.path.join(_home, 'include')
+                    _m = os.path.join(_t, 'mcs51')
+                    if os.path.isdir(_m):
+                        SDCC_INC_TOP   = _t
+                        SDCC_INC_MCS51 = _m
+                elif _cur_key == 'includedir' and not SDCC_INC_MCS51:
+                    _p = os.path.normpath(_line)
+                    if os.path.isdir(_p):
+                        SDCC_INC_MCS51 = _p
+                        SDCC_INC_TOP   = os.path.normpath(os.path.join(_p, '..'))
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        print('Warning: sdcc.exe not found in PATH.', file=sys.stderr)
+        print('  Either add SDCC\\bin to your PATH or set SDCC_HOME.', file=sys.stderr)
+    except Exception as _e:
+        print('Warning: SDCC discovery failed ({})'.format(_e), file=sys.stderr)
+
+    if SDCC_BIN_DIR:
+        os.environ['PATH'] = SDCC_BIN_DIR + os.pathsep + os.environ.get('PATH', '')
+
+if not SDCC_INC_MCS51:
+    print('Warning: could not resolve SDCC include paths.', file=sys.stderr)
+    print('  Set SDCC_HOME to your SDCC installation root (e.g. D:/Tools/SDCC).', file=sys.stderr)
+
+# ====================================================================
+# Step 2  --  build configuration
+# ====================================================================
+
+MEMORY_MODEL = 'small'
+
+CCFLAGS = [
+    '-mmcs51',
+    '--model-{}'.format(MEMORY_MODEL),
+    '--std', 'c11',
+    '--iram-size', '256',
+    '--xram-size', '1024',
+    '--code-size', '0x8000',
+]
+
+CPPPATH = ['include']
+if SDCC_INC_TOP:
+    CPPPATH.append(SDCC_INC_TOP)
+if SDCC_INC_MCS51:
+    CPPPATH.append(SDCC_INC_MCS51)
+
+CPPDEFINES = {'AT89C51RC2': None}
+
+LINKFLAGS = [
+    '-mmcs51',
+    '--model-{}'.format(MEMORY_MODEL),
+]
+
+# ====================================================================
+# Step 3  --  SCons Environment
+# ====================================================================
+env = Environment(
+    CC         = CC,
+    CXX        = CC,
+    CCFLAGS    = CCFLAGS,
+    CPPPATH    = CPPPATH,
+    CPPDEFINES = CPPDEFINES,
+    LINK       = LINK,
+    LINKFLAGS  = LINKFLAGS,
+    OBJSUFFIX  = '.rel',
+    PROGSUFFIX = '.ihx',
+    INCPREFIX     = '-I',
+    INCLUDESUFFIX = '',
+    CPPDEFPREFIX  = '-D',
+    CPPDEFSUFFIX  = '',
+    PROGPREFIX    = '',
+)
+
+env['CCCOM']   = '$CC -c $CCFLAGS $CPPFLAGS $_CPPINCFLAGS $_CPPDEFFLAGS -o $TARGET $SOURCES'
+env['CXXCOM']  = '$CXX -c $CCFLAGS $CPPFLAGS $_CPPINCFLAGS $_CPPDEFFLAGS -o $TARGET $SOURCES'
+env['LINKCOM'] = '$LINK $LINKFLAGS -o $TARGET $SOURCES $_LIBDIRFLAGS $_LIBFLAGS'
+
+if SDCC_BIN_DIR:
+    env.PrependENVPath('PATH', SDCC_BIN_DIR)
+
+# ====================================================================
+# Step 4  --  source discovery
+# ====================================================================
+SRC_DIR = 'src'
+
+c_sources = []
+for root, _dirs, files in os.walk(SRC_DIR):
+    for f in files:
+        if f.endswith('.c'):
+            c_sources.append(os.path.join(root, f))
+c_sources.sort()
+
+if not c_sources:
+    print('Warning: no .c files found under', SRC_DIR)
+
+# ====================================================================
+# Step 5  --  build targets
+# ====================================================================
+
+objects = []
+for src in c_sources:
+    rel = os.path.relpath(src, SRC_DIR)
+    obj = os.path.join('build', rel).replace('.c', '.rel')
+    objects.append(env.Object(obj, src))
+
+firmware_ihx = env.Program(os.path.join('build', 'firmware.ihx'), objects)
+
+firmware_hex = env.Command(
+    os.path.join('build', 'firmware.hex'),
+    firmware_ihx,
+    '"{}" "$SOURCE" > "$TARGET"'.format(PACKIHX),
+)
+
+Default(firmware_hex)
+
+# ====================================================================
+# Step 6  --  compile_commands.json  (for clangd language server)
+# ====================================================================
+PROJECT_DIR = os.path.abspath('.')
+
+_clangd_args = [
+    'clang', '-c', '-std=c11',
+    '-Iinclude',
+]
+if SDCC_INC_TOP:
+    _clangd_args.append('-I{}'.format(SDCC_INC_TOP))
+if SDCC_INC_MCS51:
+    _clangd_args.append('-I{}'.format(SDCC_INC_MCS51))
+_clangd_args += [
+    '-DAT89C51RC2',
+    '-D__SDCC__',
+    '-D__MCS51__',
+    '-include', 'sdcc_clangd_compat.h',
+]
+
+compile_entries = []
+for src in c_sources:
+    abs_src = os.path.abspath(src)
+    rel_src = os.path.relpath(abs_src, PROJECT_DIR)
+    compile_entries.append({
+        'directory': PROJECT_DIR,
+        'arguments': _clangd_args + [rel_src],
+        'file':      rel_src,
+    })
+
+with open('compile_commands.json', 'w') as _f:
+    json.dump(compile_entries, _f, indent=2)
+
+print('[clangd] Generated compile_commands.json with {} entries'.format(len(compile_entries)))
+print('[clangd] Compat header: include/sdcc_clangd_compat.h')
+print('')
+print('Targets:')
+print('  scons              -- build firmware')
+print('  scons -c           -- clean')
+print('  build/firmware.hex -- final output')
+print('')
+if SDCC_HOME:
+    print('SDCC install root: {} (from SDCC_HOME)'.format(SDCC_HOME))
+elif SDCC_BIN_DIR:
+    print('SDCC binary dir:   {} (from PATH + --print-search-dirs)'.format(SDCC_BIN_DIR))
+else:
+    print('SDCC: using bare names from PATH')

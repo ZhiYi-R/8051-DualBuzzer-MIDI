@@ -1,0 +1,29 @@
+# Build output
+build/
+*.hex
+*.ihx
+*.rel
+*.lst
+*.map
+*.sym
+*.asm
+*.lk
+*.mem
+*.noi
+*.omf
+*.rsp
+
+# IDE / tooling
+compile_commands.json
+.clangd/
+.cache/
+
+# SCons
+.sconsign.dblite
+
+# OS
+Thumbs.db
+.DS_Store
+
+# VSCode
+.vscode/
