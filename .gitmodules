@@ -1,0 +1,3 @@
+[submodule "fonts/LxgwWenKai"]
+	path = fonts/LxgwWenKai
+	url = https://github.com/lxgw/LxgwWenKai.git

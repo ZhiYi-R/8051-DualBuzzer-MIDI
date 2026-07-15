@@ -1,0 +1,7 @@
+.devin/
+.venv/
+.vscode/
+/TexBuild/
+**__pycache__**
+info.tex
+assets/icon.png
