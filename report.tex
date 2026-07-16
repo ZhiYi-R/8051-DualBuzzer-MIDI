@@ -291,13 +291,13 @@ ApplyFrequency 每次更新主声道频率都会调 UpdateSpectrum，所以音�
 
 \subsubsection*{ucSim51 仿真器}
 
-单元测试使用 uCsim 的 s51 仿真器对编译好的 8051 固件进行验证。s51 是开源的 MCS-51 指令级仿真器，能加载 Intel HEX 文件，运行并观察内部寄存器、存储器与端口状态。测试中通过 `-z` 选项启动 TCP 命令控制台，Python 脚本以 socket 方式发送命令、读写 SFR/IRAM、设置事件断点并触发外部中断，从而在脱离真实硬件的情况下完成自动化回归测试。
+单元测试选用了 uCsim 的 s51 仿真器来跑编译好的 8051 固件。s51 是个开源的 MCS-51 指令级仿真器，可以加载 Intel HEX 文件，运行起来之后能观察内部寄存器、存储器和端口状态。测试时给 s51 加 `-z` 参数启动 TCP 命令控制台，Python 脚本通过 socket 发命令，读/写 SFR 和 IRAM，设置事件断点，模拟外部中断。这样不需要实际硬件，也能做自动化回归测试。
 
 \subsubsection*{单元测试设计}
 
-单元测试围绕初始化、显示、LED 频谱、定时器重载、播放状态、外部中断和按键控制展开。测试时用事件断点把仿真停在固件写入关键 SFR 或 IRAM 的那条指令之前，再走一步让写入完成，然后读取端口或内存值进行断言。例如停在 P0 写入验证数码管段码，停在 P1 写入验证 LED 频谱，停在 TL0/RCAP2L 写入验证双音轨定时器重载，停在 PlayerState 写入验证播放状态。INT0、INT1 由脚本直接设置 TCON 标志位并拉低 P3.2/P3.3 模拟；P3.4 按键则预置 lastP34State 并拉低 P3.4，触发 PollPauseButton 的暂停/恢复分支。当前共 11 个用例，覆盖 MusicInit、显示、双音轨首音、切歌、模式切换、Timer1 推进音符以及暂停/恢复。
+单元测试覆盖了初始化、显示、LED 频谱、定时器重载、播放状态、外部中断和按键控制。做法是用事件断点把仿真器停在固件写关键 SFR 或 IRAM 的那条指令前，单步一次让写入完成，再读端口或内存做断言。比如停在 P0 写入之后检查数码管段码，停在 P1 写入后检查 LED 频谱，停在 TL0/RCAP2L 写入后检查两个音轨的定时器重载，停在 PlayerState 写入后检查播放状态。INT0、INT1 由脚本直接置 TCON 标志位并拉低 P3.2/P3.3 来模拟；P3.4 按键则预先把 lastP34State 置 1，再拉低 P3.4，触发 PollPauseButton 的暂停/恢复分支。目前写了 11 个用例，覆盖了 MusicInit、显示、双音轨首音、切歌、模式切换、Timer1 推进音符以及暂停/恢复。
 
-具体测试点、前序状态与预期值见表 \ref{tab:tests}。
+各测试点的前序状态与预期值见表 \ref{tab:tests}。
 
 \begin{table}[H]
     \centering
@@ -325,7 +325,7 @@ ApplyFrequency 每次更新主声道频率都会调 UpdateSpectrum，所以音�
 
 \subsubsection*{单元测试结果}
 
-在本地环境中运行 \path{uv run python Software/tests/run_tests.py}，全部 11 个单元测试用例均通过，0 失败。所有测试均基于 s51 仿真器，固件为 \path{Software/build/firmware.ihx}，未出现断言失败或仿真器错误。测试结果汇总见表 \ref{tab:results}。
+在本地运行 \path{uv run python Software/tests/run_tests.py}，11 个单元测试全部通过，没有失败。测试都基于 s51 仿真器，固件是 \path{Software/build/firmware.ihx}，过程中没有断言失败或仿真器报错。结果汇总见表 \ref{tab:results}。
 
 \begin{table}[H]
     \centering
@@ -352,5 +352,59 @@ ApplyFrequency 每次更新主声道频率都会调 UpdateSpectrum，所以音�
     \bottomrule
     \end{tabular}
 \end{table}
+
+\subsection*{2、集成测试}
+
+单元测试验证的是指令级仿真里各模块对不对，集成测试则把 \path{Software/build/firmware.hex} 加载到 Proteus 9 里，让固件、单片机和外围电路一起跑，看整机功能和交互是否符合预期。
+
+\subsubsection*{测试环境}
+
+\begin{itemize}
+    \item 仿真平台：Proteus 9 Professional
+    \item 目标单片机：AT89C51RC2，晶振 12 MHz
+    \item 外设：双蜂鸣器（P3.0/P3.1 经 Buffer 驱动）、共阳极数码管（P0）、8 位 LED 频谱（P1）、三个按键（P3.2/P3.3/P3.4）
+    \item 固件：SDCC 编译生成的 \path{Software/build/firmware.hex}
+\end{itemize}
+
+\subsubsection*{测试内容}
+
+集成测试主要看了这几个整机场景：
+
+\begin{enumerate}
+    \item 上电自检：复位后数码管显示“1”，LED 频谱随首音符点亮，主、副蜂鸣器一起发声。
+    \item 正常播放：连续跑多首曲目，看双蜂鸣器输出波形、数码管显示和 LED 频谱变化是否对得上。
+    \item 切歌：按下 P3.2 切歌键，数码管从“1”依次变到“2/3/4”再循环，蜂鸣器立刻切曲目。
+    \item 模式切换：按下 P3.3，数码管小数点点亮/熄灭，单曲循环和列表循环状态切换正确。
+    \item 暂停/继续：按下 P3.4，双蜂鸣器静音，LED 频谱保持；再按一次继续播放。
+\end{enumerate}
+
+\subsubsection*{测试结果}
+
+仿真里四首曲目都能稳定播放，双蜂鸣器同步输出两个音轨，数码管实时显示歌号，LED 频谱随音高变化，按键响应及时，没有看到抖动。图 \ref{fig:play}、图 \ref{fig:switch}、图 \ref{fig:loop} 分别是正常播放、切歌和列表循环三种状态的 Proteus 仿真截图。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{assets/正常播放.png}
+    \caption{Proteus 仿真——正常播放状态}
+    \label{fig:play}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{assets/切歌.png}
+    \caption{Proteus 仿真——切歌状态}
+    \label{fig:switch}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{assets/单曲循环.png}
+    \caption{Proteus 仿真——列表循环状态}
+    \label{fig:loop}
+\end{figure}
+
+\subsubsection*{结论}
+
+从集成测试来看，固件和硬件在 Proteus 仿真里能配合起来，接口时序、端口驱动和人机交互基本符合设计目标。连续播放、按键切换、暂停/继续这些场景都跑得挺稳，后面如果上实物板子调试，也算是有了个比较可靠的基础。
 
 \end{document}
