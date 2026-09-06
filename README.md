@@ -38,11 +38,10 @@
 │   ├── Analyzer.py             # MIDI 解析与报告生成
 │   ├── midi_analysis_report.txt
 │   └── midi_track_instruments.md
-├── fonts/                      # 第三方字体子模块
-│   └── LxgwWenKai/             # 霞鹜文楷（OFL-1.1 许可证）
+├── fonts/                      # 第三方字体（直接分发 TTF）
+│   └── LxgwWenKai/             # 霞鹜文楷 v1.522（OFL-1.1 许可证）
 ├── report.tex                  # 课程报告 LaTeX 源文件
-├── .gitignore                  # 仓库忽略规则
-└── .gitmodules                 # Git 子模块配置
+└── .gitignore                  # 仓库忽略规则
 ```
 
 ## 硬件设计
@@ -116,23 +115,18 @@ python Analyzer.py --md-output midi_track_instruments.md
 xelatex report.tex
 ```
 
-如果报告用了 `fonts/LxgwWenKai` 字体，先拉取子模块：
-
-```bash
-git submodule update --init --recursive
-```
+报告所需字体已随仓库直接分发在 `fonts/LxgwWenKai`，克隆后即可编译，无需额外拉取。
 
 ## 第三方资源与许可证
 
-- **霞鹜文楷（LxgwWenKai）**：位于 `fonts/LxgwWenKai`，使用 [SIL Open Font License 1.1](fonts/LxgwWenKai/OFL.txt) 授权。
-  - 字体不得单独销售。
-  - 若重新分发字体或修改版本，需保留版权声明与 OFL 许可证。
-  - 修改版本不得使用保留字体名（`霞鹜`、`霞鶩`、`落霞孤鹜`、`落霞孤鶩`、`LXGW`），除非获得作者书面许可。
+- **霞鹜文楷（LXGW WenKai）v1.522**：位于 `fonts/LxgwWenKai`，含 `LXGWWenKai-Regular.ttf`、`LXGWWenKai-Medium.ttf`，使用 [SIL Open Font License 1.1](fonts/LxgwWenKai/OFL.txt) 授权，为未修改原样分发。
+  - 版权：`Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai)`，`Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)`。
+  - 保留字体名（Reserved Font Names）：`霞鹜`、`霞鶩`、`落霞孤鹜`、`落霞孤鶩`、`LXGW`。
+  - 字体不得单独出售；重新分发须保留版权声明与 `OFL.txt` 全文；修改版本不得使用上述保留字体名，除非获得作者书面许可。
 
 项目其余代码是课程设计原创，没有单独声明许可证。
 
 ## 注意事项
 
-- 首次克隆后执行 `git submodule update --init --recursive` 拉取字体子模块。
 - 构建前请确保 SDCC 已安装并加入 PATH，或者设置 `SDCC_HOME` 环境变量。
 - 中断服务程序和 `main()` 放在同一文件里，以满足 SDCC 4.5.x 中断向量表生成要求。

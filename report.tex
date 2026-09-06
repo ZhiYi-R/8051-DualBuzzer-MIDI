@@ -1,5 +1,4 @@
-\documentclass{article}
-\usepackage{xeCJK}
+\documentclass[zihao=-4,a4paper]{ctexart}
 \usepackage{graphicx}
 \usepackage{geometry}
 \usepackage{fancyhdr}
@@ -9,22 +8,42 @@
 \usepackage{array}
 \usepackage{booktabs}
 \usepackage[obeyspaces]{xurl}
+\usepackage[normalem]{ulem}
 \usepackage{caption}
 \usetikzlibrary{positioning,arrows.meta,shapes.geometric}
 \geometry{a4paper, margin=2.5cm, headheight=15pt}
 
-\setCJKmainfont{LXGWWenKai}[
-    Path=fonts/LxgwWenKai/fonts/TTF/,
-    Extension=.ttf,
+\setCJKmainfont{FandolSong}[
+    Extension=.otf,
     UprightFont=*-Regular,
-    BoldFont=*-Medium,
-    AutoFakeBold=true,
+    BoldFont=*-Bold,
+]
+\setCJKsansfont{FandolHei}[
+    Extension=.otf,
+    UprightFont=*-Regular,
 ]
 \setCJKmonofont{LXGWWenKai}[
-    Path=fonts/LxgwWenKai/fonts/TTF/,
+    Path=fonts/LxgwWenKai/,
     Extension=.ttf,
     UprightFont=*-Regular,
 ]
+
+% 正文行距 22 磅（模板 w:line=440 exact）
+\renewcommand{\baselinestretch}{1.5}\selectfont
+\normalsize
+
+% 图表题降为五号
+\DeclareCaptionFont{captionsize}{\zihao{5}}
+\captionsetup{font={small,captionsize}}
+\captionsetup[table]{skip=6pt}
+
+% 章节标题：黑体小四
+\ctexset{
+    section = {format = {\heiti\zihao{-4}}},
+    subsection = {format = {\heiti\zihao{-4}}, indent = 2em},
+    subsubsection = {format = {\heiti\zihao{-4}}, indent = 2em},
+}
+
 \renewcommand{\figurename}{图}
 \renewcommand{\tablename}{表}
 
@@ -50,7 +69,7 @@
     \vspace{2cm}
     {\Huge \bfseries \coursetitle}\par
     \vspace{3cm}
-    {\LARGE \bfseries 题\quad 目：\projecttitle}\par
+    {\LARGE \bfseries 题\quad 目：\makebox[7em]{\uline{\projecttitle}}}\par
     \vfill
     \begin{tabular}{rl}
         \Large 姓\quad\quad 名： & \Large \studentname \\[0.6em]
@@ -65,6 +84,11 @@
 \end{titlepage}
 
 \setcounter{page}{1}
+
+\begin{center}
+    （\projecttitle）
+\end{center}
+
 \section*{摘要}
 
 音乐播放与音效实现是电子系统人机交互的重要载体，在消费电子、智能家居及教育展示等领域具有广泛的应用需求。本设计以AT89C51RC2单片机为核心控制单元，构建了一套基于双蜂鸣器的歌曲播放系统，具体包括双蜂鸣器驱动电路、共阳极数码管显示电路、LED频谱指示电路以及按键交互控制电路。系统利用定时器产生对应音符频率的方波信号，经Buffer驱动主、副两个蜂鸣器，实现Numb、Payphone、NewDivide、WhatIveDone四首MIDI曲目的双音轨同步播放；通过P0口数码管显示当前歌曲编号，P1口LED根据频率变化形成频谱指示，用户可通过P3.2切歌键、P3.3模式切换键及P3.4暂停/继续键完成歌曲切换、单曲循环/列表循环切换与播放控制，外部中断配合软件消抖保证了操作的稳定性与实时性。Python分析脚本从MIDI资源中提取主旋律与低音轨，生成播放数据，提升了曲目准备的效率与准确性。实验结果表明，系统能够稳定、连续地播放多轨音乐，输出音色清晰，交互响应及时，整体运行可靠。
@@ -105,7 +129,7 @@
 
 系统总体结构如图\ref{fig:system}所示：AT89C51RC2 作为核心，左边接 12 MHz 晶振和电源/复位，右边接共阳极数码管、8 位 LED 和双蜂鸣器，下方是三个按键，上方通过虚线接收 PC 端转换好的曲目数据。单片机内部的 16 位定时器根据音符频率算出重载值，从 P3.0、P3.1 输出方波，经 Buffer 驱动主、副两个蜂鸣器；定时器 1 提供 10 ms 节拍，用来推进双音轨播放。P0 口接共阳极数码管显示当前歌号，P1 口接 8 位 LED，随音高点亮不同位。P3.2、P3.3、P3.4 三个按键分别用于切歌、切换单曲/列表循环、暂停/继续，低电平有效，外部中断配合软件延时消抖。Python 脚本先把 MIDI 文件转成主旋律和低音轨两组数据，主控直接调用即可。各模块分工明确，能一起完成多曲目双音轨播放、显示和交互。
 \newpage
-\subsection*{2、设计任务}
+\subsection*{2、设计任务及指标}
 
 \begin{figure}[H]
     \centering
@@ -406,5 +430,9 @@ ApplyFrequency 每次更新主声道频率都会调 UpdateSpectrum，所以音�
 \subsubsection*{结论}
 
 从集成测试来看，固件和硬件在 Proteus 仿真里能配合起来，接口时序、端口驱动和人机交互基本符合设计目标。连续播放、按键切换、暂停/继续这些场景都跑得挺稳，后面如果上实物板子调试，也算是有了个比较可靠的基础。
+
+\section*{五、设计总结}
+
+本设计以 AT89C51RC2 单片机为核心，用定时器 0/2 按音符频率翻转端口输出方波，经 Buffer 驱动主、副两个蜂鸣器实现双音轨播放，定时器 1 提供 10 ms 节拍推进音符时值；曲目数据由 Python 脚本从 MIDI 文件离线分析生成，数码管显示歌号并用小数点区分单曲/列表循环，P1 口 LED 随音高分档点亮，三个按键经外部中断加软件消抖完成切歌、模式切换和暂停/继续。测试分两层进行：先在 s51 指令级仿真器上用 11 个单元用例验证初始化、显示、重载计算和播放状态，全部通过；再把固件载入 Proteus 9 做集成仿真，四首曲目连续播放稳定，按键交互及时，达到了设计任务书的各项功能要求。设计中还存在一些不足：全部工作在仿真环境完成，未在实物板上验证蜂鸣器音质和驱动电流等实际因素；LED 频谱只是按音符频率分档点亮，并不是真正的能量频谱；音符数据在编译前一次性生成，更换曲目需要重新编译；系统也没有音量与播放速度的调节手段。后续可以在实物调试的基础上，引入 PWM 音量控制与播放速度调节，支持曲目数据在线更新，让数码管显示曲名和播放进度，并把 LED 显示改进为随实时频率动态变化的效果，使这个音乐盒更接近实用的小型播放器。
 
 \end{document}

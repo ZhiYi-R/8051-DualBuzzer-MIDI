@@ -16,6 +16,7 @@ Output:  build/firmware.hex  (Intel HEX)
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -25,27 +26,38 @@ import sys
 
 SDCC_HOME   = os.environ.get('SDCC_HOME', '').strip()
 SDCC_BIN_DIR= ''
-CC          = 'sdcc.exe'
+# Fedora prefixes SDCC executables (sdcc-sdcc); elsewhere plain sdcc
+CC_CANDIDATES = ['sdcc-sdcc', 'sdcc', 'sdcc.exe']
+CC          = CC_CANDIDATES[0]
 LINK        = CC
-PACKIHX     = 'packihx.exe'
+PACKIHX     = 'sdcc-packihx' if CC_CANDIDATES[0] == 'sdcc-sdcc' else 'packihx'
 SDCC_INC_TOP= ''
 SDCC_INC_MCS51=''
 
 if SDCC_HOME:
     _bin = os.path.join(SDCC_HOME, 'bin')
-    CC      = os.path.join(_bin, 'sdcc.exe')
+    CC      = os.path.join(_bin, CC_CANDIDATES[0])
     LINK    = CC
-    PACKIHX = os.path.join(_bin, 'packihx.exe')
+    PACKIHX = os.path.join(_bin, PACKIHX)
     SDCC_BIN_DIR  = _bin
     SDCC_INC_TOP   = os.path.join(SDCC_HOME, 'include')
     SDCC_INC_MCS51 = os.path.join(SDCC_INC_TOP, 'mcs51')
 else:
+    _probe_name = CC_CANDIDATES[0]
     try:
-        _r = subprocess.run(
-            ['sdcc.exe', '--print-search-dirs'],
-            capture_output=True, text=True, timeout=15,
-        )
-        if _r.returncode == 0:
+        _exe = _probe_name if shutil.which(_probe_name) else next(
+            (n for n in CC_CANDIDATES[1:] if shutil.which(n)), None)
+        if _exe:
+            _r = subprocess.run(
+                [_exe, '--print-search-dirs'],
+                capture_output=True, text=True, timeout=15,
+            )
+            CC   = _exe
+            LINK = _exe
+            if _exe == 'sdcc-sdcc':
+                PACKIHX = 'sdcc-packihx'
+            elif _exe == 'sdcc':
+                PACKIHX = 'packihx'
             _cur_key = ''
             for _line in _r.stdout.strip().splitlines():
                 _line = _line.strip()
@@ -68,13 +80,23 @@ else:
                         SDCC_INC_MCS51 = _p
                         SDCC_INC_TOP   = os.path.normpath(os.path.join(_p, '..'))
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        print('Warning: sdcc.exe not found in PATH.', file=sys.stderr)
+        print('Warning: SDCC not found in PATH.', file=sys.stderr)
         print('  Either add SDCC\\bin to your PATH or set SDCC_HOME.', file=sys.stderr)
     except Exception as _e:
         print('Warning: SDCC discovery failed ({})'.format(_e), file=sys.stderr)
 
     if SDCC_BIN_DIR:
         os.environ['PATH'] = SDCC_BIN_DIR + os.pathsep + os.environ.get('PATH', '')
+
+if not SDCC_INC_MCS51:
+    # distro-packaged SDCC (e.g. Fedora) may not report include dirs;
+    # fall back to the well-known system paths
+    for _t in ('/usr/share/sdcc/include', '/usr/local/share/sdcc/include'):
+        _m = os.path.join(_t, 'mcs51')
+        if os.path.isdir(_m):
+            SDCC_INC_TOP   = _t
+            SDCC_INC_MCS51 = _m
+            break
 
 if not SDCC_INC_MCS51:
     print('Warning: could not resolve SDCC include paths.', file=sys.stderr)
